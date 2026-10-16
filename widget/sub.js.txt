@@ -270,6 +270,7 @@ const EMBLEM_CENTER = { x: 190.00, y: 180.00 };
 
   function playAlert(username) {
     if (cancelTimeline) cancelTimeline();
+    root.style.opacity = '1';
     resetVisualState();
     document.getElementById('username').textContent = username || 'Viewer';
 
@@ -291,6 +292,7 @@ const EMBLEM_CENTER = { x: 190.00, y: 180.00 };
 
   const debugFrac = params.get('frac');
   if (params.get('debug') === '1' && debugFrac !== null) {
+    root.style.opacity = '1';
     document.getElementById('textBlock').style.animation = 'none';
     document.getElementById('textBlock').style.opacity = '1';
     const targetMs = parseFloat(params.get('ms') || '0');

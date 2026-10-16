@@ -263,6 +263,7 @@ const params = new URLSearchParams(location.search);
 
   function playAlert(username, amount) {
     if (cancelTimeline) cancelTimeline();
+    root.style.opacity = '1';
     clearParticles();
 
     const tierKey = tierForAmount(amount);
@@ -297,6 +298,7 @@ const params = new URLSearchParams(location.search);
 
   const debugMs = params.get('ms');
   if (params.get('debug') === '1' && debugMs !== null) {
+    root.style.opacity = '1';
     const requested = parseInt(params.get('tier') || '1', 10);
     const tierKey = tierKeys.includes(requested) ? requested : 1;
     document.getElementById('caption').textContent = TIERS[tierKey].label;

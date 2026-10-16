@@ -7,6 +7,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Space+Grotesk:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../theme/tokens.css">
 <style>
+  /* Hidden until a real event actually triggers playAlert() -- otherwise
+     every element's default/last-known state (and every OTHER widget
+     stacked in the same StreamElements overlay) is visible simultaneously
+     the moment the overlay connects, before anything has actually fired. */
+  .alert-root { opacity: 0; }
+
   .text-block {
     position: absolute;
     left: 0; right: 0; top: 34px;
@@ -279,6 +285,7 @@
 
   function playAlert(username, amount) {
     if (cancelTimeline) cancelTimeline();
+    root.style.opacity = '1';
     clearParticles();
 
     const tierKey = tierForAmount(amount);
@@ -313,6 +320,7 @@
 
   const debugMs = params.get('ms');
   if (params.get('debug') === '1' && debugMs !== null) {
+    root.style.opacity = '1';
     const requested = parseInt(params.get('tier') || '1', 10);
     const tierKey = tierKeys.includes(requested) ? requested : 1;
     document.getElementById('caption').textContent = TIERS[tierKey].label;

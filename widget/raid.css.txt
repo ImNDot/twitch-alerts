@@ -86,7 +86,13 @@ html, body {
 }
 
 
-.text-block {
+/* Hidden until a real event actually triggers playAlert() -- otherwise
+     every element's default/last-known state (and every OTHER widget
+     stacked in the same StreamElements overlay) is visible simultaneously
+     the moment the overlay connects, before anything has actually fired. */
+  .alert-root { opacity: 0; }
+
+  .text-block {
     position: absolute;
     left: 350px; right: 30px; top: 50%;
     transform: translateY(-50%);
