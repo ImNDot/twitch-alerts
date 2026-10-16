@@ -1,0 +1,263 @@
+<title>Neon Knot Alerts</title>
+<style>
+  :root{
+    --bg: #0c0f16;
+    --bg-raised: #141925;
+    --line: #262c3a;
+    --text: #e7e9ee;
+    --text-dim: #9aa2b1;
+    --accent-teal: #2fd9c9;
+    --accent-orange: #ff8a3d;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg: #f3f1ea;
+      --bg-raised: #ffffff;
+      --line: #ded8c8;
+      --text: #211d16;
+      --text-dim: #6b6456;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg: #0c0f16; --bg-raised:#141925; --line:#262c3a; --text:#e7e9ee; --text-dim:#9aa2b1;
+  }
+
+  *{ box-sizing: border-box; }
+  body{
+    margin:0;
+    padding-inline: 20px;
+    padding-block: 28px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap: 22px;
+  }
+  h1{
+    font-size: 22px;
+    letter-spacing: 0.02em;
+    margin: 0;
+    text-align:center;
+  }
+  p.lede{
+    color: var(--text-dim);
+    font-size: 14px;
+    max-width: 480px;
+    text-align:center;
+    margin: -12px 0 0 0;
+  }
+
+  .card{
+    width:100%;
+    max-width: 800px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 18px;
+    display:flex;
+    flex-direction:column;
+    gap: 14px;
+  }
+  .card h2{
+    font-size: 15px;
+    margin:0;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .card h2 .dot{
+    width:8px;height:8px;border-radius:50%;
+    background: var(--accent-teal);
+    box-shadow: 0 0 8px var(--accent-teal);
+  }
+
+  .stage-wrap{
+    width: 100%;
+    aspect-ratio: 800 / 360;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #05070d;
+    position: relative;
+  }
+  .stage-wrap.scene{ aspect-ratio: 1920 / 1080; }
+  .stage-wrap iframe{
+    width: 800px;
+    height: 360px;
+    border: none;
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: top left;
+    display:block;
+  }
+  .stage-wrap.scene iframe{ width: 1920px; height: 1080px; }
+
+  .controls{
+    display:flex;
+    gap:10px;
+    flex-wrap: wrap;
+    align-items:center;
+  }
+  input[type="text"]{
+    flex: 1 1 160px;
+    min-width: 0;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-family: inherit;
+    font-size: 14px;
+  }
+  input[type="text"]:focus{ outline: 2px solid var(--accent-teal); outline-offset: 1px; }
+  select.tier-input{
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 9px 10px;
+    font-family: inherit;
+    font-size: 14px;
+  }
+  select.tier-input:focus{ outline: 2px solid var(--accent-teal); outline-offset: 1px; }
+  button{
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 16px;
+    cursor: pointer;
+    background: var(--accent-teal);
+    color: #06201c;
+  }
+  button:hover{ filter: brightness(1.08); }
+  button:focus-visible{ outline: 2px solid var(--accent-orange); outline-offset: 2px; }
+
+  footer{
+    color: var(--text-dim);
+    font-size: 12px;
+    text-align:center;
+    max-width: 480px;
+  }
+</style>
+
+<h1>Neon Knot Alerts (work in progress)</h1>
+<p class="lede">Follow/Sub/Raid: character and neon squares chase each other around the outline of your actual Celtic knot artwork. Gifted Subs: his head pops up and neon cubes pour out as he yells, scaling with the gift tier.</p>
+
+<div class="card" data-alert="follow">
+  <h2><span class="dot"></span>Follow</h2>
+  <div class="stage-wrap">
+    <iframe class="alert-frame" src="alerts/follow.html?user=Viewer" allow="autoplay"></iframe>
+  </div>
+  <div class="controls">
+    <input type="text" class="username-input" placeholder="Viewer name" value="Viewer">
+    <button class="replay-btn">Replay alert</button>
+  </div>
+</div>
+
+<div class="card" data-alert="sub">
+  <h2><span class="dot" style="background:var(--accent-orange);box-shadow:0 0 8px var(--accent-orange);"></span>Sub</h2>
+  <div class="stage-wrap">
+    <iframe class="alert-frame" src="alerts/sub.html?user=Viewer" allow="autoplay"></iframe>
+  </div>
+  <div class="controls">
+    <input type="text" class="username-input" placeholder="Viewer name" value="Viewer">
+    <button class="replay-btn">Replay alert</button>
+  </div>
+</div>
+
+<div class="card" data-alert="raid">
+  <h2><span class="dot" style="background:#ff2222;box-shadow:0 0 8px #ff2222;"></span>Raid</h2>
+  <div class="stage-wrap">
+    <iframe class="alert-frame" src="alerts/raid.html?user=Viewer" allow="autoplay"></iframe>
+  </div>
+  <div class="controls">
+    <input type="text" class="username-input" placeholder="Viewer name" value="Viewer">
+    <button class="replay-btn">Replay alert</button>
+  </div>
+</div>
+
+<div class="card" data-alert="gift">
+  <h2><span class="dot" style="background:var(--accent-teal);box-shadow:0 0 8px var(--accent-teal);"></span>Gifted Subs</h2>
+  <div class="stage-wrap">
+    <iframe class="alert-frame" src="alerts/gift.html?user=Viewer&tier=10" allow="autoplay"></iframe>
+  </div>
+  <div class="controls">
+    <input type="text" class="username-input" placeholder="Gifter name" value="Viewer">
+    <select class="tier-input">
+      <option value="1">Gifted (1)</option>
+      <option value="5">Gifted x5</option>
+      <option value="10" selected>Gifted x10</option>
+      <option value="20">Gifted x20</option>
+      <option value="50">Gifted x50</option>
+      <option value="100">Over 100 subs</option>
+    </select>
+    <button class="replay-btn">Replay alert</button>
+  </div>
+</div>
+
+<h1 style="margin-top: 14px;">Scenes</h1>
+<p class="lede">Full OBS scenes, not overlay alerts - same knot/character/cube motif, built to fill the whole canvas.</p>
+
+<div class="card" data-alert="starting-soon" data-scene-path="scenes">
+  <h2><span class="dot" style="background:var(--accent-teal);box-shadow:0 0 8px var(--accent-teal);"></span>Starting Soon</h2>
+  <div class="stage-wrap scene">
+    <iframe class="alert-frame" src="scenes/starting-soon.html" allow="autoplay"></iframe>
+  </div>
+  <div class="controls">
+    <input type="text" class="subtitle-input" placeholder="Subtitle text" value="Grab a drink - we're almost live.">
+    <button class="replay-btn">Restart timer</button>
+  </div>
+</div>
+
+<div class="card" data-alert="ending" data-scene-path="scenes">
+  <h2><span class="dot" style="background:var(--accent-orange);box-shadow:0 0 8px var(--accent-orange);"></span>Ending</h2>
+  <div class="stage-wrap scene">
+    <iframe class="alert-frame" src="scenes/ending.html" allow="autoplay"></iframe>
+  </div>
+  <div class="controls">
+    <input type="text" class="subtitle-input" placeholder="Subtitle text" value="Catch the next stream soon - same knot, same chaos.">
+    <button class="replay-btn">Apply text</button>
+  </div>
+</div>
+
+<footer>Alerts render at native 800×360, scenes at native 1920×1080 - exactly what ships as the OBS browser source.</footer>
+
+<script>
+  document.querySelectorAll('.card').forEach(card => {
+    const name = card.dataset.alert;
+    const folder = card.dataset.scenePath || 'alerts';
+    const frame = card.querySelector('.alert-frame');
+    const input = card.querySelector('.username-input');
+    const tierInput = card.querySelector('.tier-input');
+    const subtitleInput = card.querySelector('.subtitle-input');
+    card.querySelector('.replay-btn').addEventListener('click', () => {
+      const qs = new URLSearchParams();
+      if (input) qs.set('user', input.value || 'Viewer');
+      if (tierInput) qs.set('tier', tierInput.value);
+      if (subtitleInput) qs.set('subtitle', subtitleInput.value);
+      qs.set('_', Date.now());
+      frame.src = `${folder}/${name}.html?${qs.toString()}`;
+    });
+  });
+
+  function rescale() {
+    document.querySelectorAll('.stage-wrap').forEach(wrap => {
+      const iframe = wrap.querySelector('iframe');
+      if (!iframe) return;
+      const nativeWidth = iframe.offsetWidth; // 800 for alerts, 1920 for scenes
+      const scale = wrap.getBoundingClientRect().width / nativeWidth;
+      iframe.style.transform = `scale(${scale})`;
+    });
+  }
+  window.addEventListener('resize', rescale);
+  window.addEventListener('load', rescale);
+  rescale();
+  new ResizeObserver(rescale).observe(document.body);
+</script>

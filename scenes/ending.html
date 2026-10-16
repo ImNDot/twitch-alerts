@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ending Scene</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Space+Grotesk:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../theme/tokens.css">
+<style>
+  :root { --box-w: 1920px; --box-h: 1080px; }
+
+  html, body {
+    background: var(--bg-navy);
+  }
+
+  .backdrop {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(60% 55% at 28% 48%, rgba(47,217,201,0.16) 0%, rgba(47,217,201,0) 70%),
+      radial-gradient(45% 50% at 85% 15%, rgba(255,138,61,0.12) 0%, rgba(255,138,61,0) 70%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 3px),
+      var(--bg-navy);
+  }
+
+  .content {
+    position: absolute;
+    left: 1020px; right: 90px; top: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 22px;
+  }
+  .eyebrow {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: 0.28em;
+    font-size: 22px;
+    color: var(--orange);
+    text-shadow: 0 0 14px rgba(255,138,61,0.6);
+  }
+  .title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    font-size: 92px;
+    line-height: 1;
+    color: var(--panel-cream);
+    text-shadow: 0 0 26px rgba(236,229,211,0.35);
+    text-wrap: balance;
+  }
+  .title .accent { color: var(--teal); }
+
+  .subtitle {
+    font-family: var(--font-body);
+    font-size: 30px;
+    color: var(--panel-cream);
+    opacity: 0.8;
+    max-width: 640px;
+  }
+
+  .signoff {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 26px;
+    letter-spacing: 0.08em;
+    color: var(--teal);
+    text-shadow: 0 0 12px rgba(47,217,201,0.55);
+    animation: textGlowPulse 2.4s ease-in-out infinite;
+    margin-top: 12px;
+  }
+
+  .mover {
+    position: absolute;
+    left: 0; top: 0;
+    transform-origin: 50% 50%;
+    will-change: transform;
+    pointer-events: none;
+  }
+  .char-img { width: 115px; height: 177px; object-fit: contain; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.6)); }
+
+  .square-visual {
+    width: 100%; height: 100%;
+    border-radius: 4px;
+    animation: squareSpin 1.4s linear infinite;
+  }
+  @keyframes squareSpin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="alert-root" id="root" style="overflow: visible;">
+  <div class="backdrop"></div>
+  <svg id="stage" width="1920" height="1080" viewBox="0 0 1920 1080" style="position:absolute;inset:0;"></svg>
+
+  <div class="content">
+    <div class="eyebrow">NDOT WAS</div>
+    <div class="title">THANKS FOR<br>WATCHING<span class="accent">.</span></div>
+    <div class="subtitle" id="subtitle">Catch the next stream soon - same knot, same chaos.</div>
+    <div class="signoff" id="signoff">SEE YOU NEXT TIME</div>
+  </div>
+</div>
+
+<script src="./scene-text.js"></script>
+<script type="module">
+  import { buildEmblem } from '../theme/knot-border.js';
+  import { makePathSampler, makeJitter } from '../theme/path-motion.js';
+  import { CHAR_PATH_D, KNOT_CENTERLINE_D, EMBLEM_PLACEMENT } from '../theme/scene-knot-path-data.js';
+
+  const params = new URLSearchParams(location.search);
+  // scene-text.js (edit that file to customize) sets the defaults; ?subtitle=
+  // / ?signoff= URL params, if present, override them on top -- handy for
+  // one-off testing.
+  const configSubtitle = window.SCENE_TEXT?.ending?.subtitle;
+  if (configSubtitle) document.getElementById('subtitle').textContent = configSubtitle;
+  const configSignoff = window.SCENE_TEXT?.ending?.signoff;
+  if (configSignoff) document.getElementById('signoff').textContent = configSignoff;
+  const subtitleText = params.get('subtitle');
+  if (subtitleText) document.getElementById('subtitle').textContent = subtitleText;
+  const signoffText = params.get('signoff');
+  if (signoffText) document.getElementById('signoff').textContent = signoffText;
+
+  const stage = document.getElementById('stage');
+  const root = document.getElementById('root');
+  const sampler = makePathSampler(buildEmblem(root, stage, { KNOT_CENTERLINE_D, EMBLEM_PLACEMENT }));
+
+  const charPathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  charPathEl.setAttribute('d', CHAR_PATH_D);
+  charPathEl.setAttribute('fill', 'none');
+  charPathEl.setAttribute('stroke', 'none');
+  stage.appendChild(charPathEl);
+  const charSampler = makePathSampler(charPathEl);
+
+  // --- Character, run-cycle sprite, leads the pack (same treatment as Follow/Starting Soon) ---
+  const RUN_FRAMES = Array.from({ length: 6 }, (_, i) => `../assets/run/run-${i}.png`);
+  RUN_FRAMES.forEach(src => { const p = new Image(); p.src = src; });
+
+  const charEl = document.createElement('img');
+  charEl.src = RUN_FRAMES[0];
+  charEl.className = 'mover char-img';
+  root.appendChild(charEl);
+  let lastFrameIdx = -1;
+  const FRAME_MS = 150;
+  const charJitter = makeJitter(1);
+  const CHAR_W = 115, CHAR_H = 177;
+
+  function placeCharacter(frac, elapsedMs) {
+    const { x, y, angle } = charSampler(frac);
+    const { nx, ny } = charJitter(elapsedMs);
+    const cx = x - CHAR_W / 2 + nx * 3;
+    const cy = y - CHAR_H / 2 + ny * 3;
+    charEl.style.transform = `translate(${cx}px, ${cy}px) rotate(${angle + nx * 2}deg) scaleX(-1)`;
+
+    const frameIdx = Math.floor(elapsedMs / FRAME_MS) % RUN_FRAMES.length;
+    if (frameIdx !== lastFrameIdx) {
+      lastFrameIdx = frameIdx;
+      charEl.src = RUN_FRAMES[frameIdx];
+    }
+  }
+
+  // --- Chasing neon squares (same pattern as Follow/Starting Soon) ---
+  const SQUARE_COLORS = ['var(--neon-cyan)', 'var(--neon-magenta)', 'var(--neon-green)', 'var(--neon-cyan)'];
+  const SQUARE_SIZE = 22;
+  const squares = SQUARE_COLORS.map((color, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'mover';
+    wrap.style.width = `${SQUARE_SIZE}px`;
+    wrap.style.height = `${SQUARE_SIZE}px`;
+    const vis = document.createElement('div');
+    vis.className = 'square-visual';
+    vis.style.background = color;
+    vis.style.boxShadow = `0 0 12px ${color}, 0 0 28px ${color}`;
+    vis.style.animationDelay = `${i * -0.2}s`;
+    wrap.appendChild(vis);
+    root.appendChild(wrap);
+    return { el: wrap, phase: 0.05 + i * 0.038, jitter: makeJitter(10 + i * 3) };
+  });
+
+  const CHAR_PHASE_LEAD = 0.08;
+  const LOOP_DURATION = 5200;
+
+  function render(frac, elapsedMs) {
+    placeCharacter((frac + CHAR_PHASE_LEAD) % 1, elapsedMs);
+    squares.forEach(sq => {
+      const { x, y, angle } = sampler((frac - sq.phase + 1) % 1);
+      const { nx, ny } = sq.jitter(elapsedMs);
+      const cx = x - SQUARE_SIZE / 2 + nx * 5;
+      const cy = y - SQUARE_SIZE / 2 + ny * 5;
+      sq.el.style.transform = `translate(${cx}px, ${cy}px) rotate(${angle}deg)`;
+    });
+  }
+
+  function loop(ts) {
+    render((ts / LOOP_DURATION) % 1, ts);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+</script>
+</body>
+</html>

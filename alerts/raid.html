@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Raid Alert</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Space+Grotesk:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../theme/tokens.css">
+<style>
+  .text-block {
+    position: absolute;
+    left: 350px; right: 30px; top: 50%;
+    transform: translateY(-50%);
+    text-align: center;
+    opacity: 0;
+  }
+  .text-block.show { animation: popIn 480ms cubic-bezier(.2,1.4,.4,1) forwards; }
+  .text-block.hide { animation: fadeOut 350ms ease forwards; }
+  .alert-username { font-size: 44px; line-height: 1; color: var(--panel-cream); text-shadow: 0 0 18px rgba(236,229,211,0.45); }
+  .alert-caption { font-size: 19px; margin-top: 8px; color: #ff4d4d; animation: textGlowPulse 1.6s ease-in-out infinite; }
+
+  .mover {
+    position: absolute;
+    left: 0; top: 0;
+    transform-origin: 50% 50%;
+    will-change: transform;
+    pointer-events: none;
+  }
+  .char-img { width: 52px; height: 80px; object-fit: contain; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.6)); }
+
+  .square-visual {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    animation: squareSpin 1.4s linear infinite;
+  }
+  @keyframes squareSpin { to { transform: rotate(360deg); } }
+
+  /* .mover (outer, JS-controlled translate/rotate) wraps .exclaim-img (inner,
+     CSS-animated pulse) -- same split as squares use, so the JS transform
+     and the CSS animation don't fight over the same element's transform. */
+  .exclaim-img {
+    width: 58px; height: 48px;
+    object-fit: contain;
+    animation: exclaimPulse 420ms ease-in-out infinite;
+  }
+  @keyframes exclaimPulse {
+    0%, 100% { filter: drop-shadow(0 0 6px #ff2222) drop-shadow(0 0 16px #ff0000); transform: scale(1); }
+    50%      { filter: drop-shadow(0 0 10px #ff4444) drop-shadow(0 0 26px #ff0000); transform: scale(1.08); }
+  }
+
+  .alert-root.fading img,
+  .alert-root.fading .mover,
+  .alert-root.fading .text-block { animation: fadeOut 350ms ease forwards; }
+</style>
+</head>
+<body>
+<div class="alert-root" id="root">
+  <svg id="stage" width="800" height="360" viewBox="0 0 800 360" style="position:absolute;inset:0;"></svg>
+
+  <div class="text-block show" id="textBlock">
+    <div class="alert-username" id="username">Viewer</div>
+    <div class="alert-caption">IS RAIDING!</div>
+  </div>
+
+  <audio id="sfx" src="../assets/audio/raid.mp3" preload="auto"></audio>
+</div>
+
+<script type="module">
+  import { buildEmblem } from '../theme/knot-border.js';
+  import { makePathSampler, runTimeline, makeJitter } from '../theme/path-motion.js';
+  import { CHAR_PATH_D, EMBLEM_CENTER, KNOT_CENTERLINE_D, EMBLEM_PLACEMENT } from '../theme/knot-path-data.js';
+
+  const params = new URLSearchParams(location.search);
+
+  const stage = document.getElementById('stage');
+  const root = document.getElementById('root');
+  const centerline = buildEmblem(root, stage, { KNOT_CENTERLINE_D, EMBLEM_PLACEMENT });
+  const sampler = makePathSampler(centerline); // bumpy knot silhouette — squares + exclamations ride this
+
+  const charPathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  charPathEl.setAttribute('d', CHAR_PATH_D);
+  charPathEl.setAttribute('fill', 'none');
+  charPathEl.setAttribute('stroke', 'none');
+  stage.appendChild(charPathEl);
+  const charSampler = makePathSampler(charPathEl);
+
+  // --- Character (leads the pack, same as Follow) ---
+  const RUN_FRAMES = Array.from({ length: 6 }, (_, i) => `../assets/run/run-${i}.png`);
+  RUN_FRAMES.forEach(src => { const p = new Image(); p.src = src; }); // preload
+
+  const charEl = document.createElement('img');
+  charEl.src = RUN_FRAMES[0];
+  charEl.className = 'mover char-img';
+  root.appendChild(charEl);
+  let lastFrameIdx = -1;
+  const FRAME_MS = 140;
+  const charJitter = makeJitter(1);
+
+  function placeCharacter(frac, elapsedMs) {
+    const { x, y, angle } = charSampler(frac);
+    const { nx, ny } = charJitter(elapsedMs);
+    const w = 52, h = 80;
+    const cx = x - w / 2 + nx * 2;
+    const cy = y - h / 2 + ny * 2;
+    charEl.style.transform = `translate(${cx}px, ${cy}px) rotate(${angle + nx * 2}deg) scaleX(-1)`;
+
+    const frameIdx = Math.floor(elapsedMs / FRAME_MS) % RUN_FRAMES.length;
+    if (frameIdx !== lastFrameIdx) {
+      lastFrameIdx = frameIdx;
+      charEl.src = RUN_FRAMES[frameIdx];
+    }
+  }
+
+  const CHAR_PHASE_LEAD = 0.09; // character's own frac offset, same as Follow/Sub
+
+  // --- Neon squares, pulled in tight around the character this time ---
+  // (almost overlapping him — one even sits slightly ahead of his own lead,
+  // instead of trailing the whole pack the way Follow does).
+  const SQUARE_COLORS = ['var(--neon-cyan)', 'var(--neon-magenta)', 'var(--neon-green)', 'var(--neon-cyan)'];
+  const SQUARE_OFFSETS = [0.115, 0.085, 0.065, 0.045]; // position = frac + offset (character sits at frac+0.09)
+  const squares = SQUARE_COLORS.map((color, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'mover';
+    const vis = document.createElement('div');
+    vis.className = 'square-visual';
+    vis.style.background = color;
+    vis.style.boxShadow = `0 0 6px ${color}, 0 0 14px ${color}`;
+    vis.style.animationDelay = `${i * -0.2}s`;
+    wrap.appendChild(vis);
+    root.appendChild(wrap);
+    return {
+      el: wrap,
+      offset: SQUARE_OFFSETS[i],
+      jitter: makeJitter(10 + i * 3),
+      jumping: false,
+      jumpStart: 0,
+      jumpDur: 0,
+      nextJumpAt: 300 + Math.random() * 700,
+    };
+  });
+
+  const JUMP_HEIGHT = 13;
+  const JUMP_MIN_MS = 160, JUMP_MAX_MS = 260;
+  const JUMP_GAP_MIN_MS = 350, JUMP_GAP_MAX_MS = 900;
+
+  function updateJump(sq, elapsedMs) {
+    if (!sq.jumping) {
+      if (elapsedMs >= sq.nextJumpAt) {
+        sq.jumping = true;
+        sq.jumpStart = elapsedMs;
+        sq.jumpDur = JUMP_MIN_MS + Math.random() * (JUMP_MAX_MS - JUMP_MIN_MS);
+      }
+      return 0;
+    }
+    const progress = (elapsedMs - sq.jumpStart) / sq.jumpDur;
+    if (progress >= 1) {
+      sq.jumping = false;
+      sq.nextJumpAt = elapsedMs + JUMP_GAP_MIN_MS + Math.random() * (JUMP_GAP_MAX_MS - JUMP_GAP_MIN_MS);
+      return 0;
+    }
+    return JUMP_HEIGHT * Math.sin(Math.PI * progress);
+  }
+
+  // --- Exclamation cluster — chases the pack from further back, on the
+  //     SAME straight path as the character (not the bumpy knot silhouette
+  //     the squares use), so it stays visually tied to him the whole loop
+  //     instead of swinging out to wherever that other path happens to be.
+  const EXCLAIM_FRAMES = ['../assets/exclamation-cluster.png', '../assets/exclamation-burst.png'];
+  EXCLAIM_FRAMES.forEach(src => { const p = new Image(); p.src = src; });
+  const exclaimWrap = document.createElement('div');
+  exclaimWrap.className = 'mover';
+  const exclaimEl = document.createElement('img');
+  exclaimEl.src = EXCLAIM_FRAMES[0];
+  exclaimEl.className = 'exclaim-img';
+  exclaimWrap.appendChild(exclaimEl);
+  root.appendChild(exclaimWrap);
+  const EXCLAIM_OFFSET = -0.08; // behind the character/squares pack, same path units as CHAR_PHASE_LEAD
+  const EXCLAIM_FRAME_MS = 180; // flicker between the plain cluster and the dust-trail burst
+  const exclaimJitter = makeJitter(40);
+  let lastExclaimFrame = -1;
+
+  function placeExclaim(frac, elapsedMs) {
+    const { x, y, angle } = charSampler((frac + EXCLAIM_OFFSET + 1) % 1);
+    const { nx, ny } = exclaimJitter(elapsedMs);
+    const w = 58, h = 48;
+    const cx = x - w / 2 + nx * 3;
+    const cy = y - h / 2 + ny * 3;
+    exclaimWrap.style.transform = `translate(${cx}px, ${cy}px) rotate(${angle}deg)`;
+
+    const fIdx = Math.floor(elapsedMs / EXCLAIM_FRAME_MS) % EXCLAIM_FRAMES.length;
+    if (fIdx !== lastExclaimFrame) {
+      lastExclaimFrame = fIdx;
+      exclaimEl.src = EXCLAIM_FRAMES[fIdx];
+    }
+  }
+
+  const LOOP_DURATION = 3000; // ms per full lap around the knot
+
+  function render(frac, elapsedMs) {
+    placeCharacter((frac + CHAR_PHASE_LEAD) % 1, elapsedMs);
+    squares.forEach(sq => {
+      const { x, y, angle } = sampler((frac + sq.offset + 1) % 1);
+      const { nx, ny } = sq.jitter(elapsedMs);
+      const jump = updateJump(sq, elapsedMs);
+      let ox = x, oy = y;
+      if (jump > 0) {
+        const dx = x - EMBLEM_CENTER.x, dy = y - EMBLEM_CENTER.y;
+        const d = Math.hypot(dx, dy) || 1;
+        ox += (dx / d) * jump;
+        oy += (dy / d) * jump;
+      }
+      const w = 10, h = 10;
+      const cx = ox - w / 2 + nx * 3;
+      const cy = oy - h / 2 + ny * 3;
+      sq.el.style.transform = `translate(${cx}px, ${cy}px) rotate(${angle}deg) scale(${1 + jump * 0.025})`;
+    });
+    placeExclaim(frac, elapsedMs);
+  }
+
+  // --- Resettable trigger: see Follow's alert for why this needs to be able
+  //     to play, fully reset, and play again, not just once on page load. ---
+  let cancelTimeline = null;
+
+  function resetVisualState() {
+    root.classList.remove('fading');
+    const textBlock = document.getElementById('textBlock');
+    textBlock.classList.remove('show');
+    void textBlock.offsetWidth; // force a reflow so re-adding 'show' restarts the pop-in animation
+    textBlock.classList.add('show');
+    lastFrameIdx = -1;
+    lastExclaimFrame = -1;
+    squares.forEach(sq => {
+      sq.jumping = false;
+      sq.jumpStart = 0;
+      sq.jumpDur = 0;
+      sq.nextJumpAt = 300 + Math.random() * 700;
+    });
+  }
+
+  function playAlert(username) {
+    if (cancelTimeline) cancelTimeline();
+    resetVisualState();
+    document.getElementById('username').textContent = username || 'Viewer';
+
+    const sfx = document.getElementById('sfx');
+    sfx.volume = 0.85;
+    sfx.currentTime = 0;
+    sfx.play().catch(() => {}); // autoplay can be blocked outside OBS; fails silently there
+
+    const TOTAL = 6000;
+    cancelTimeline = runTimeline(TOTAL, (t, elapsed) => {
+      const loopFrac = (elapsed / LOOP_DURATION) % 1;
+      render(loopFrac, elapsed);
+      if (t > 0.88 && !root.classList.contains('fading')) {
+        root.classList.add('fading');
+      }
+    });
+  }
+
+  const debugFrac = params.get('frac');
+  if (params.get('debug') === '1' && debugFrac !== null) {
+    document.getElementById('textBlock').style.animation = 'none';
+    document.getElementById('textBlock').style.opacity = '1';
+    const targetMs = parseFloat(params.get('ms') || '0');
+    for (let t = 0; t <= targetMs; t += 16) render(parseFloat(debugFrac), t);
+    render(parseFloat(debugFrac), targetMs);
+  } else {
+    // Live on StreamElements: sit idle and wait for a real raid event.
+    window.addEventListener('onEventReceived', (obj) => {
+      if (obj.detail.listener === 'raid-latest') {
+        playAlert(obj.detail.event.name);
+      }
+    });
+
+    const urlUser = params.get('user');
+    if (urlUser) playAlert(urlUser);
+
+    if (params.get('simtest') === '1') {
+      playAlert('FirstTester');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('onEventReceived', {
+          detail: { listener: 'raid-latest', event: { name: 'SecondTester' } },
+        }));
+      }, 6500);
+    }
+  }
+</script>
+</body>
+</html>

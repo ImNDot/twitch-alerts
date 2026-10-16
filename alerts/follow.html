@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Follow Alert</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Space+Grotesk:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../theme/tokens.css">
+<style>
+  .text-block {
+    position: absolute;
+    left: 350px; right: 30px; top: 50%;
+    transform: translateY(-50%);
+    text-align: center;
+    opacity: 0;
+  }
+  .text-block.show { animation: popIn 480ms cubic-bezier(.2,1.4,.4,1) forwards; }
+  .text-block.hide { animation: fadeOut 350ms ease forwards; }
+  .alert-username { font-size: 44px; line-height: 1; color: var(--panel-cream); text-shadow: 0 0 18px rgba(236,229,211,0.45); }
+  .alert-caption { font-size: 19px; margin-top: 8px; animation: textGlowPulse 1.6s ease-in-out infinite; }
+
+  .mover {
+    position: absolute;
+    left: 0; top: 0;
+    transform-origin: 50% 50%;
+    will-change: transform;
+    pointer-events: none;
+  }
+  .char-img { width: 52px; height: 80px; object-fit: contain; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.6)); }
+
+  .square-visual {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    animation: squareSpin 1.4s linear infinite;
+  }
+  @keyframes squareSpin { to { transform: rotate(360deg); } }
+
+  .alert-root.fading img,
+  .alert-root.fading .mover,
+  .alert-root.fading .text-block { animation: fadeOut 350ms ease forwards; }
+</style>
+</head>
+<body>
+<div class="alert-root" id="root">
+  <svg id="stage" width="800" height="360" viewBox="0 0 800 360" style="position:absolute;inset:0;"></svg>
+
+  <div class="text-block show" id="textBlock">
+    <div class="alert-username" id="username">Viewer</div>
+    <div class="alert-caption">just followed!</div>
+  </div>
+
+  <audio id="sfx" src="../assets/audio/follow.mp3" preload="auto"></audio>
+</div>
+
+<script type="module">
+  import { buildEmblem } from '../theme/knot-border.js';
+  import { makePathSampler, runTimeline, makeJitter } from '../theme/path-motion.js';
+  import { CHAR_PATH_D, EMBLEM_CENTER, KNOT_CENTERLINE_D, EMBLEM_PLACEMENT } from '../theme/knot-path-data.js';
+
+  const params = new URLSearchParams(location.search);
+
+  const stage = document.getElementById('stage');
+  const root = document.getElementById('root');
+  const centerline = buildEmblem(root, stage, { KNOT_CENTERLINE_D, EMBLEM_PLACEMENT });
+  const sampler = makePathSampler(centerline); // bumpy knot silhouette — squares still ride this
+
+  // The character gets his own straight-edged diamond path (4 tip points,
+  // no bumps) so he's easy to track instead of following every knotwork detail.
+  const charPathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  charPathEl.setAttribute('d', CHAR_PATH_D);
+  charPathEl.setAttribute('fill', 'none');
+  charPathEl.setAttribute('stroke', 'none');
+  stage.appendChild(charPathEl);
+  const charSampler = makePathSampler(charPathEl);
+
+  // --- Character (leads) — true run-cycle sprite frames ---
+  const RUN_FRAMES = Array.from({ length: 6 }, (_, i) => `../assets/run/run-${i}.png`);
+  RUN_FRAMES.forEach(src => { const p = new Image(); p.src = src; }); // preload
+
+  const charEl = document.createElement('img');
+  charEl.src = RUN_FRAMES[0];
+  charEl.className = 'mover char-img';
+  root.appendChild(charEl);
+  let lastFrameIdx = -1;
+  const FRAME_MS = 140; // run-cycle frame rate, kept in step with LOOP_DURATION below
+  const charJitter = makeJitter(1);
+
+  // Rotate to face the direction of travel (same treatment as the squares)
+  // instead of flipping horizontally — a flip was reversing his stride
+  // mid-cycle on the top/bottom edges and reading as a moonwalk. Full
+  // rotation means he runs upside-down along the bottom edge, which reads
+  // fine and keeps the stride always moving forward.
+  function placeCharacter(frac, elapsedMs) {
+    const { x, y, angle } = charSampler(frac);
+    const { nx, ny } = charJitter(elapsedMs);
+    const w = 52, h = 80;
+    const cx = x - w / 2 + nx * 2;
+    const cy = y - h / 2 + ny * 2;
+    charEl.style.transform = `translate(${cx}px, ${cy}px) rotate(${angle + nx * 2}deg) scaleX(-1)`;
+
+    const frameIdx = Math.floor(elapsedMs / FRAME_MS) % RUN_FRAMES.length;
+    if (frameIdx !== lastFrameIdx) {
+      lastFrameIdx = frameIdx;
+      charEl.src = RUN_FRAMES[frameIdx];
+    }
+  }
+
+  // --- Chasing neon squares (trail behind the character) ---
+  const SQUARE_COLORS = ['var(--neon-cyan)', 'var(--neon-magenta)', 'var(--neon-green)', 'var(--neon-cyan)'];
+  const squares = SQUARE_COLORS.map((color, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'mover';
+    const vis = document.createElement('div');
+    vis.className = 'square-visual';
+    vis.style.background = color;
+    vis.style.boxShadow = `0 0 6px ${color}, 0 0 14px ${color}`;
+    vis.style.animationDelay = `${i * -0.2}s`;
+    wrap.appendChild(vis);
+    root.appendChild(wrap);
+    return {
+      el: wrap,
+      phase: 0.06 + i * 0.045,
+      jitter: makeJitter(10 + i * 3),
+      jumping: false,
+      jumpStart: 0,
+      jumpDur: 0,
+      nextJumpAt: 300 + Math.random() * 700,
+    };
+  });
+
+  const JUMP_HEIGHT = 13; // px, outward from the knot center at the peak of a hop
+  const JUMP_MIN_MS = 160, JUMP_MAX_MS = 260;
+  const JUMP_GAP_MIN_MS = 350, JUMP_GAP_MAX_MS = 900;
+
+  function updateJump(sq, elapsedMs) {
+    if (!sq.jumping) {
+      if (elapsedMs >= sq.nextJumpAt) {
+        sq.jumping = true;
+        sq.jumpStart = elapsedMs;
+        sq.jumpDur = JUMP_MIN_MS + Math.random() * (JUMP_MAX_MS - JUMP_MIN_MS);
+      }
+      return 0;
+    }
+    const progress = (elapsedMs - sq.jumpStart) / sq.jumpDur;
+    if (progress >= 1) {
+      sq.jumping = false;
+      sq.nextJumpAt = elapsedMs + JUMP_GAP_MIN_MS + Math.random() * (JUMP_GAP_MAX_MS - JUMP_GAP_MIN_MS);
+      return 0;
+    }
+    return JUMP_HEIGHT * Math.sin(Math.PI * progress);
+  }
+
+  const CHAR_PHASE_LEAD = 0.09; // character is this far ahead of the square pack (frac of loop)
+  const LOOP_DURATION = 3000;   // ms per full lap around the knot
+
+  function render(frac, elapsedMs) {
+    placeCharacter((frac + CHAR_PHASE_LEAD) % 1, elapsedMs);
+    squares.forEach(sq => {
+      const { x, y, angle } = sampler((frac - sq.phase + 1) % 1);
+      const { nx, ny } = sq.jitter(elapsedMs);
+      const jump = updateJump(sq, elapsedMs);
+      let ox = x, oy = y;
+      if (jump > 0) {
+        const dx = x - EMBLEM_CENTER.x, dy = y - EMBLEM_CENTER.y;
+        const d = Math.hypot(dx, dy) || 1;
+        ox += (dx / d) * jump;
+        oy += (dy / d) * jump;
+      }
+      const w = 10, h = 10;
+      const cx = ox - w / 2 + nx * 3;
+      const cy = oy - h / 2 + ny * 3;
+      sq.el.style.transform = `translate(${cx}px, ${cy}px) rotate(${angle}deg) scale(${1 + jump * 0.025})`;
+    });
+  }
+
+  // --- Resettable trigger: this widget stays loaded for the whole stream and
+  //     has to be able to play, fully reset, and play again for every event,
+  //     not just once on page load. ---
+  let cancelTimeline = null;
+
+  function resetVisualState() {
+    root.classList.remove('fading');
+    const textBlock = document.getElementById('textBlock');
+    textBlock.classList.remove('show');
+    void textBlock.offsetWidth; // force a reflow so re-adding 'show' restarts the pop-in animation
+    textBlock.classList.add('show');
+    lastFrameIdx = -1;
+    // Without this, a square that was mid-hop when the last alert's timeline
+    // stopped would keep jumping=true with a stale jumpStart from the
+    // previous run, producing a broken jump offset for the whole next alert.
+    squares.forEach(sq => {
+      sq.jumping = false;
+      sq.jumpStart = 0;
+      sq.jumpDur = 0;
+      sq.nextJumpAt = 300 + Math.random() * 700;
+    });
+  }
+
+  function playAlert(username) {
+    if (cancelTimeline) cancelTimeline();
+    resetVisualState();
+    document.getElementById('username').textContent = username || 'Viewer';
+
+    const sfx = document.getElementById('sfx');
+    sfx.volume = 0.85;
+    sfx.currentTime = 0;
+    sfx.play().catch(() => {}); // autoplay can be blocked outside OBS; fails silently there
+
+    const TOTAL = 6000;
+    cancelTimeline = runTimeline(TOTAL, (t, elapsed) => {
+      const loopFrac = (elapsed / LOOP_DURATION) % 1;
+      render(loopFrac, elapsed);
+      if (t > 0.88 && !root.classList.contains('fading')) {
+        root.classList.add('fading');
+      }
+    });
+  }
+
+  const debugFrac = params.get('frac');
+  if (params.get('debug') === '1' && debugFrac !== null) {
+    document.getElementById('textBlock').style.animation = 'none';
+    document.getElementById('textBlock').style.opacity = '1';
+    const targetMs = parseFloat(params.get('ms') || '0');
+    for (let t = 0; t <= targetMs; t += 16) render(parseFloat(debugFrac), t); // walk the state machine up to targetMs
+    render(parseFloat(debugFrac), targetMs);
+  } else {
+    // Live on StreamElements: sit idle and wait for a real follow event.
+    window.addEventListener('onEventReceived', (obj) => {
+      if (obj.detail.listener === 'follower-latest') {
+        playAlert(obj.detail.event.name);
+      }
+    });
+
+    // Local testing/preview convenience: a ?user= in the URL plays once on load.
+    const urlUser = params.get('user');
+    if (urlUser) playAlert(urlUser);
+
+    // Dev-only: ?simtest=1 fires two follow events back to back (6.5s apart)
+    // so multi-trigger reset behavior can be screenshotted without needing
+    // a real StreamElements event or a hand-written test page.
+    if (params.get('simtest') === '1') {
+      playAlert('FirstTester');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('onEventReceived', {
+          detail: { listener: 'follower-latest', event: { name: 'SecondTester' } },
+        }));
+      }, 6500);
+    }
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Gifted Subs Alert</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Space+Grotesk:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../theme/tokens.css">
+<style>
+  .text-block {
+    position: absolute;
+    left: 0; right: 0; top: 34px;
+    text-align: center;
+    opacity: 0;
+  }
+  .text-block.show { animation: popIn 480ms cubic-bezier(.2,1.4,.4,1) forwards; }
+  .text-block.hide { animation: fadeOut 350ms ease forwards; }
+  .alert-username { font-size: 34px; line-height: 1; color: var(--panel-cream); text-shadow: 0 0 18px rgba(236,229,211,0.45); }
+  .alert-caption {
+    font-size: 25px;
+    margin-top: 5px;
+    color: var(--orange);
+    animation: textGlowPulse 1.6s ease-in-out infinite;
+  }
+
+  .head-wrap {
+    position: absolute;
+    left: 50%; top: 222px;
+    width: 180px; height: 180px;
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 0;
+  }
+  .head-wrap.show { animation: headPopIn 420ms cubic-bezier(.2,1.5,.4,1) 120ms forwards; }
+  .head-wrap.hide { animation: fadeOut 350ms ease forwards; }
+  @keyframes headPopIn {
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+    65%  { opacity: 1; transform: translate(-50%, -50%) scale(1.12); }
+    100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  }
+  .head-img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.55)); }
+
+  .mover {
+    position: absolute;
+    left: 0; top: 0;
+    transform-origin: 50% 50%;
+    will-change: transform;
+    pointer-events: none;
+  }
+  .cube-visual {
+    position: relative;
+    width: 100%; height: 100%;
+    border-radius: 2px;
+    animation: cubeSpin 1.1s linear infinite;
+  }
+  @keyframes cubeSpin { to { transform: rotate(360deg); } }
+
+  .cube-glint {
+    position: absolute;
+    top: 10%; left: 12%;
+    width: 42%; height: 42%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0) 70%);
+    animation: cubeTwinkle 900ms ease-in-out infinite;
+  }
+  @keyframes cubeTwinkle { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+
+  /* Tiny glitter dust mixed in with the cubes — lighter, more scattered,
+     and keeps drifting a bit after the cubes stop for an ambient shimmer. */
+  .glitter-dot {
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    animation: glitterTwinkle 450ms ease-in-out infinite;
+  }
+  @keyframes glitterTwinkle { 0%, 100% { opacity: 0.15; transform: scale(0.7); } 50% { opacity: 1; transform: scale(1); } }
+
+  .alert-root.fading .mover,
+  .alert-root.fading .head-wrap,
+  .alert-root.fading .text-block { animation: fadeOut 350ms ease forwards; }
+</style>
+</head>
+<body>
+<div class="alert-root" id="root">
+  <div class="text-block show" id="textBlock">
+    <div class="alert-username" id="username">Viewer</div>
+    <div class="alert-caption" id="caption">GIFTED A SUB!</div>
+  </div>
+
+  <div class="head-wrap show" id="headWrap">
+    <img class="head-img" id="headImg" src="../assets/character-head-closed.png">
+  </div>
+
+  <audio id="sfx" src="../assets/audio/gift.mp3" preload="auto"></audio>
+</div>
+
+<script type="module">
+  import { runTimeline } from '../theme/path-motion.js';
+
+  const params = new URLSearchParams(location.search);
+
+  // Cube count scales with gift size but stays capped so the top tier
+  // doesn't turn into visual noise / a performance hit. A real gift amount
+  // (e.g. 23) gets mapped down to the largest tier threshold <= amount, so
+  // "over 100" naturally also covers 137, 500, etc.
+  const TIERS = {
+    1:   { label: 'GIFTED A SUB!', cubes: 4 },
+    5:   { label: 'GIFTED x5',     cubes: 11 },
+    10:  { label: 'GIFTED x10',    cubes: 20 },
+    20:  { label: 'GIFTED x20',    cubes: 34 },
+    50:  { label: 'GIFTED x50',    cubes: 50 },
+    100: { label: 'OVER 100 SUBS!', cubes: 68 },
+  };
+  const tierKeys = Object.keys(TIERS).map(Number).sort((a, b) => a - b);
+  function tierForAmount(amount) {
+    const n = Math.max(1, Math.floor(Number(amount) || 1));
+    const matches = tierKeys.filter(k => k <= n);
+    return matches.length ? matches[matches.length - 1] : 1;
+  }
+
+  const root = document.getElementById('root');
+  const headImg = document.getElementById('headImg');
+  const headWrap = document.getElementById('headWrap');
+  const textBlock = document.getElementById('textBlock');
+
+  const MOUTH_OPEN_AT = 520;   // ms — when he opens up and cubes start falling
+  const FALL_DURATION = 850;   // ms each cube takes to drop from the mouth to the floor
+  const BOTTOM_Y = 345;
+
+  // Mouth position as a fraction of the head box (head-img is 180x180,
+  // square, head centered within it — mouth sits in the lower-middle).
+  const HEAD_BOX = 180;
+  const MOUTH_X_FRAC = 0.5;
+  const MOUTH_Y_FRAC = 0.70;
+  const headLeft = 400 - HEAD_BOX / 2; // head-wrap is centered at left:50% of an 800-wide canvas
+  const headTop = 222 - HEAD_BOX / 2;
+  const mouthX = headLeft + HEAD_BOX * MOUTH_X_FRAC;
+  const mouthY = headTop + HEAD_BOX * MOUTH_Y_FRAC;
+
+  // Concrete hex triples (not CSS vars) so each cube can build its own
+  // light-to-dark gradient for a faceted, 3D-ish look instead of a flat tile.
+  const CUBE_COLOR_DEFS = [
+    { light: '#d6fff9', base: '#2fd9c9', dark: '#0d6e64' }, // teal
+    { light: '#ffe3c2', base: '#ff8a3d', dark: '#9a4c12' }, // orange
+    { light: '#ffffff', base: '#ece5d3', dark: '#9a9080' }, // cream
+    { light: '#d7fbff', base: '#39e6ff', dark: '#0f7a8c' }, // neon cyan
+    { light: '#ffd6f6', base: '#ff2bd6', dark: '#8c0f73' }, // neon magenta
+    { light: '#e4ffe9', base: '#7cff9c', dark: '#2b8c45' }, // neon green
+  ];
+
+  function rand(min, max) { return min + Math.random() * (max - min); }
+
+  const GLITTER_COLORS = ['#39e6ff', '#ff2bd6', '#7cff9c', '#2fd9c9', '#ffea4d'];
+
+  // Cubes/glitter can't be built once at page load like the knot alerts'
+  // squares are -- the count depends on the gift amount, which is different
+  // every time this widget fires. Rebuilt fresh (and the old DOM elements
+  // thrown away) on every trigger instead.
+  let cubes = [];
+  let glitter = [];
+
+  function clearParticles() {
+    cubes.forEach(c => c.el.remove());
+    glitter.forEach(g => g.el.remove());
+    cubes = [];
+    glitter = [];
+  }
+
+  function buildParticles(cubeCount) {
+    const cubeSpawnWindow = Math.min(1700, 420 + cubeCount * 70);
+    cubes = Array.from({ length: cubeCount }, (_, i) => {
+      const size = rand(6, 11);
+      const wrap = document.createElement('div');
+      wrap.className = 'mover';
+      wrap.style.width = `${size}px`;
+      wrap.style.height = `${size}px`;
+      wrap.style.opacity = '0';
+      const vis = document.createElement('div');
+      vis.className = 'cube-visual';
+      const c = CUBE_COLOR_DEFS[i % CUBE_COLOR_DEFS.length];
+      vis.style.background = `linear-gradient(135deg, ${c.light} 0%, ${c.base} 45%, ${c.dark} 100%)`;
+      vis.style.boxShadow = [
+        `0 0 4px ${c.base}`, `0 0 10px ${c.base}`,
+        `inset -1px -1px 1px rgba(0,0,0,0.45)`, `inset 1px 1px 1px rgba(255,255,255,0.65)`,
+      ].join(', ');
+      vis.style.animationDelay = `${rand(-1, 0)}s`;
+      const glint = document.createElement('div');
+      glint.className = 'cube-glint';
+      glint.style.animationDelay = `${rand(-0.9, 0)}s`;
+      vis.appendChild(glint);
+      wrap.appendChild(vis);
+      root.appendChild(wrap);
+      return {
+        el: wrap,
+        size,
+        spawnAt: rand(0, cubeSpawnWindow),
+        fallDur: FALL_DURATION * rand(0.9, 1.15),
+        startX: rand(-5, 5),         // narrow stream width right at the mouth
+        xDrift: rand(-14, 14),       // gentle widening as it falls, not a wide scatter
+        spin: rand(-180, 180),       // deg/s extra beyond the CSS spin
+        swayFreq: rand(2, 3.5),
+        swayAmp: rand(1.5, 4),
+      };
+    });
+
+    // --- Glitter dust mixed in with the cubes: smaller, lighter, wider
+    //     spread, and spawns across nearly the whole alert for a lingering
+    //     shimmer after the cubes themselves have stopped. ---
+    const glitterCount = Math.round(cubeCount * 1.8);
+    const glitterSpawnWindow = Math.min(4200, cubeSpawnWindow + 2200);
+    glitter = Array.from({ length: glitterCount }, (_, i) => {
+      const size = rand(2, 4);
+      const wrap = document.createElement('div');
+      wrap.className = 'mover';
+      wrap.style.width = `${size}px`;
+      wrap.style.height = `${size}px`;
+      wrap.style.opacity = '0';
+      const dot = document.createElement('div');
+      dot.className = 'glitter-dot';
+      const color = GLITTER_COLORS[i % GLITTER_COLORS.length];
+      dot.style.background = `radial-gradient(circle, #ffffff 0%, ${color} 45%, ${color}00 75%)`;
+      dot.style.boxShadow = `0 0 4px #fff, 0 0 8px ${color}, 0 0 16px ${color}, 0 0 24px ${color}`;
+      dot.style.animationDelay = `${rand(-0.5, 0)}s`;
+      wrap.appendChild(dot);
+      root.appendChild(wrap);
+      return {
+        el: wrap,
+        size,
+        spawnAt: rand(0, glitterSpawnWindow),
+        fallDur: rand(650, 1100),
+        startX: rand(-26, 26),       // glitter drifts across a wider band than the cube stream
+        xDrift: rand(-30, 30),
+        swayFreq: rand(1.5, 4),
+        swayAmp: rand(6, 16),
+      };
+    });
+  }
+
+  function placeGlitter(g, elapsedMs) {
+    const life = elapsedMs - MOUTH_OPEN_AT - g.spawnAt;
+    if (life < 0 || life > g.fallDur + 120) { g.el.style.opacity = '0'; return; }
+
+    const tn = Math.min(life / g.fallDur, 1);
+    const x = mouthX + g.startX + g.xDrift * tn + Math.sin(life / 1000 * g.swayFreq * Math.PI * 2) * g.swayAmp;
+    const y = mouthY + (BOTTOM_Y - mouthY) * tn; // near-linear drift — lighter than the cubes' gravity arc
+
+    let opacity = Math.min(1, life / 120);
+    if (life > g.fallDur - 180) opacity = Math.min(opacity, Math.max(0, 1 - (life - (g.fallDur - 180)) / 180));
+    g.el.style.opacity = String(opacity);
+    g.el.style.transform = `translate(${x - g.size / 2}px, ${y - g.size / 2}px)`;
+  }
+
+  function placeCube(cube, elapsedMs) {
+    const life = elapsedMs - MOUTH_OPEN_AT - cube.spawnAt;
+    if (life < 0 || life > cube.fallDur + 150) { cube.el.style.opacity = '0'; return; }
+
+    const tn = Math.min(life / cube.fallDur, 1);
+    const ease = tn * tn; // ease-in, reads like gravity without unbounded growth
+    const x = mouthX + cube.startX + cube.xDrift * tn + Math.sin(life / 1000 * cube.swayFreq * Math.PI * 2) * cube.swayAmp;
+    const y = mouthY + (BOTTOM_Y - mouthY) * ease;
+
+    let opacity = Math.min(1, life / 90); // quick pop-out of the mouth
+    if (life > cube.fallDur - 150) opacity = Math.min(opacity, Math.max(0, 1 - (life - (cube.fallDur - 150)) / 150));
+
+    cube.el.style.opacity = String(opacity);
+    const rot = life * 0.12 + cube.spin * (life / 1000);
+    cube.el.style.transform = `translate(${x - cube.size / 2}px, ${y - cube.size / 2}px) rotate(${rot}deg)`;
+  }
+
+  function render(elapsedMs) {
+    if (elapsedMs >= MOUTH_OPEN_AT && headImg.src.indexOf('character-head-open') === -1) {
+      headImg.src = '../assets/character-head-open.png';
+    }
+    cubes.forEach(c => placeCube(c, elapsedMs));
+    glitter.forEach(g => placeGlitter(g, elapsedMs));
+  }
+
+  // --- Resettable trigger: see Follow's alert for why this needs to be able
+  //     to play, fully reset, and play again, not just once on page load. ---
+  let cancelTimeline = null;
+
+  function playAlert(username, amount) {
+    if (cancelTimeline) cancelTimeline();
+    clearParticles();
+
+    const tierKey = tierForAmount(amount);
+    const { label, cubes: cubeCount } = TIERS[tierKey];
+    document.getElementById('caption').textContent = label;
+    buildParticles(cubeCount);
+
+    document.getElementById('username').textContent = username || 'Viewer';
+    headImg.src = '../assets/character-head-closed.png';
+
+    root.classList.remove('fading');
+    textBlock.classList.remove('show');
+    void textBlock.offsetWidth; // force a reflow so re-adding 'show' restarts the pop-in animation
+    textBlock.classList.add('show');
+    headWrap.classList.remove('show');
+    void headWrap.offsetWidth;
+    headWrap.classList.add('show');
+
+    const sfx = document.getElementById('sfx');
+    sfx.volume = 0.85;
+    sfx.currentTime = 0;
+    sfx.play().catch(() => {}); // autoplay can be blocked outside OBS; fails silently there
+
+    const TOTAL = 6500;
+    cancelTimeline = runTimeline(TOTAL, (t, elapsed) => {
+      render(elapsed);
+      if (t > 0.9 && !root.classList.contains('fading')) {
+        root.classList.add('fading');
+      }
+    });
+  }
+
+  const debugMs = params.get('ms');
+  if (params.get('debug') === '1' && debugMs !== null) {
+    const requested = parseInt(params.get('tier') || '1', 10);
+    const tierKey = tierKeys.includes(requested) ? requested : 1;
+    document.getElementById('caption').textContent = TIERS[tierKey].label;
+    buildParticles(TIERS[tierKey].cubes);
+    const targetMs = parseFloat(debugMs);
+    for (let t = 0; t <= targetMs; t += 16) render(t);
+    render(targetMs);
+  } else {
+    // Live on StreamElements: sit idle and wait for a real gifted-sub event.
+    // StreamElements fires one "subscriber-latest" event per gift action
+    // (gifted:true), but ALSO fires one per recipient when it's a bulk gift
+    // (isCommunityGift:true on each) -- skipping those avoids one alert per
+    // recipient on top of the one for the gift itself. This is the one piece
+    // that's worth testing live with StreamElements' own Test button, since
+    // their docs don't fully spell out that distinction.
+    window.addEventListener('onEventReceived', (obj) => {
+      const data = obj.detail.event;
+      if (obj.detail.listener === 'subscriber-latest' && data.gifted && !data.isCommunityGift) {
+        playAlert(data.sender, data.amount);
+      }
+    });
+
+    const urlUser = params.get('user');
+    if (urlUser) playAlert(urlUser, parseInt(params.get('tier') || '1', 10));
+
+    if (params.get('simtest') === '1') {
+      playAlert('FirstTester', 1);
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('onEventReceived', {
+          detail: {
+            listener: 'subscriber-latest',
+            event: { name: 'X', sender: 'SecondTester', gifted: true, amount: 20, isCommunityGift: false },
+          },
+        }));
+      }, 7000);
+    }
+  }
+</script>
+</body>
+</html>
