@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Space+Grotesk:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Neon Celtic-Cyberpunk theme tokens — shared across all alerts.
+   Change the look here, not per-alert, to keep everything consistent. */
+
+:root {
+  /* Core brand palette (character / UI chrome) */
+  --bg-navy:        #0a0e1a;
+  --panel-cream:    #ece5d3;
+  --panel-cream-lo: #d9d0b8;
+  --ink:            #241f1a;
+  --teal:           #2fd9c9;
+  --teal-glow:      #8af5e8;
+  --orange:         #ff8a3d;
+  --orange-glow:    #ffc08a;
+
+  /* Environmental neon (knot border, particles, chase shapes) */
+  --neon-cyan:      #39e6ff;
+  --neon-magenta:   #ff2bd6;
+  --neon-green:     #7cff9c;
+
+  --font-display: 'Rajdhani', sans-serif;
+  --font-body:    'Space Grotesk', sans-serif;
+
+  --box-w: 800px;
+  --box-h: 360px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  width: var(--box-w);
+  height: var(--box-h);
+  font-family: var(--font-body);
+}
+
+.alert-root {
+  position: relative;
+  width: var(--box-w);
+  height: var(--box-h);
+}
+
+.alert-panel {
+  position: absolute;
+  inset: 34px;
+  border-radius: 26px;
+  background:
+    radial-gradient(120% 140% at 20% 0%, #fffaf0 0%, var(--panel-cream) 45%, var(--panel-cream-lo) 100%);
+  box-shadow: 0 0 40px rgba(47, 217, 201, 0.15) inset, 0 10px 30px rgba(0,0,0,0.45);
+}
+
+.alert-username {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.alert-caption {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--orange);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.glow-teal   { filter: drop-shadow(0 0 6px var(--teal)) drop-shadow(0 0 14px var(--teal)); }
+.glow-orange { filter: drop-shadow(0 0 6px var(--orange)) drop-shadow(0 0 14px var(--orange)); }
+
+@keyframes popIn {
+  0%   { opacity: 0; transform: scale(0.6) translateY(10px); }
+  60%  { opacity: 1; transform: scale(1.08) translateY(0); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes fadeOut {
+  to { opacity: 0; }
+}
+
+@keyframes textGlowPulse {
+  0%, 100% { text-shadow: 0 0 10px currentColor, 0 0 2px currentColor; }
+  50%      { text-shadow: 0 0 18px currentColor, 0 0 4px currentColor; }
+}
+
+
+.text-block {
+    position: absolute;
+    left: 350px; right: 30px; top: 50%;
+    transform: translateY(-50%);
+    text-align: center;
+    opacity: 0;
+  }
+  .text-block.show { animation: popIn 480ms cubic-bezier(.2,1.4,.4,1) forwards; }
+  .text-block.hide { animation: fadeOut 350ms ease forwards; }
+  .alert-username { font-size: 44px; line-height: 1; color: var(--panel-cream); text-shadow: 0 0 18px rgba(236,229,211,0.45); }
+  .alert-caption { font-size: 19px; margin-top: 8px; animation: textGlowPulse 1.6s ease-in-out infinite; }
+
+  .mover {
+    position: absolute;
+    left: 0; top: 0;
+    transform-origin: 50% 50%;
+    will-change: transform;
+    pointer-events: none;
+  }
+  .char-img { width: 52px; height: 80px; object-fit: contain; filter: drop-shadow(0 3px 6px rgba(0,0,0,0.6)); }
+
+  .square-visual {
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    animation: squareSpin 1.4s linear infinite;
+  }
+  @keyframes squareSpin { to { transform: rotate(360deg); } }
+
+  .alert-root.fading img,
+  .alert-root.fading .mover,
+  .alert-root.fading .text-block { animation: fadeOut 350ms ease forwards; }
+
+</style></head>
+<body>
+<div class="alert-root" id="root">
+  <svg id="stage" width="800" height="360" viewBox="0 0 800 360" style="position:absolute;inset:0;"></svg>
+
+  <div class="text-block show" id="textBlock">
+    <div class="alert-username" id="username">Viewer</div>
+    <div class="alert-caption">just subscribed!</div>
+  </div>
+
+  <audio id="sfx" src="https://imndot.github.io/twitch-alerts/assets/audio/sub.mp3" preload="auto"></audio>
+</div>
+
+<script>
+// Shared helper for moving elements along the knot centerline path.
+// Keeps Follow/Sub/Raid from each reimplementing path-walking.
+
+function makePathSampler(pathEl) {
+  const len = pathEl.getTotalLength();
+  const eps = Math.max(1, len * 0.002);
+  return function sample(frac) {
+    const f = ((frac % 1) + 1) % 1;
+    const d = f * len;
+    const p = pathEl.getPointAtLength(d);
+    const p2 = pathEl.getPointAtLength((d + eps) % len);
+    const angle = Math.atan2(p2.y - p.y, p2.x - p.x) * 180 / Math.PI;
+    return { x: p.x, y: p.y, angle, len };
+  };
+}
+
+// Positions `el` (expects transform-origin center) at path fraction `frac`,
+// facing the direction of travel, with an optional squash pulse near corners.
+function placeOnPath(el, sampler, frac, { scale = 1, flip = false, squash = 0, w = 0, h = 0, rotate = true } = {}) {
+  const { x, y, angle } = sampler(frac);
+  const faceFlip = flip ? 180 : 0;
+  const sx = scale * (1 + squash);
+  const sy = scale * (1 - squash * 0.6);
+  const cx = x - w / 2;
+  const cy = y - h / 2;
+  const rot = rotate ? `rotate(${angle}deg)` : '';
+  el.style.transform =
+    `translate(${cx}px, ${cy}px) ${rot} scaleX(${sx}) scaleY(${sy}) rotate(${faceFlip}deg)`;
+}
+
+// Drives a requestAnimationFrame loop for `durationMs`, calling onFrame(t) each tick
+// where t goes 0 -> 1 linearly across the whole duration. Returns a cancel function.
+function runTimeline(durationMs, onFrame, onDone) {
+  let start = null;
+  let raf;
+  function frame(ts) {
+    if (start === null) start = ts;
+    const t = Math.min((ts - start) / durationMs, 1);
+    onFrame(t, ts - start);
+    if (t < 1) {
+      raf = requestAnimationFrame(frame);
+    } else if (onDone) {
+      onDone();
+    }
+  }
+  raf = requestAnimationFrame(frame);
+  return () => cancelAnimationFrame(raf);
+}
+
+// A small deterministic wobble (sum of two off-ratio sines) for "alive" motion
+// on top of clean path tracking. Call with elapsed ms; returns offsets in [-1,1].
+function makeJitter(seed = 1) {
+  const a = 2.1 + seed * 0.37;
+  const b = 1.3 + seed * 0.21;
+  const pa = seed * 1.7;
+  const pb = seed * 2.9;
+  return function jitter(elapsedMs) {
+    const s = elapsedMs / 1000;
+    const nx = Math.sin(s * a + pa) * 0.6 + Math.sin(s * b * 1.9 + pb) * 0.4;
+    const ny = Math.cos(s * b + pb) * 0.6 + Math.cos(s * a * 1.3 + pa) * 0.4;
+    return { nx, ny };
+  };
+}
+
+// Builds N trailing "ghost" ancestors of a moving element for a motion-blur trail.
+// Returns an array of { el, phaseOffset, opacity } to update each frame alongside the lead.
+function makeTrail(sourceEl, count, { spacingFrac = 0.015, opacityFalloff = 0.55 } = {}) {
+  const parent = sourceEl.parentElement;
+  const ghosts = [];
+  for (let i = 1; i <= count; i++) {
+    const ghost = sourceEl.cloneNode(true);
+    ghost.removeAttribute('id');
+    ghost.style.opacity = String(Math.pow(opacityFalloff, i));
+    ghost.style.filter = (ghost.style.filter || '') + ' blur(1.5px)';
+    parent.insertBefore(ghost, sourceEl);
+    ghosts.push({ el: ghost, phaseOffset: -spacingFrac * i });
+  }
+  return ghosts;
+}
+
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function el(tag, attrs) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) node.setAttribute(k, attrs[k]);
+  return node;
+}
+
+// Places the real Celtic N-knot artwork at its computed position/scale and
+// returns the invisible centerline <path> that traces its outer silhouette
+// (with a halo margin) — use with makePathSampler() to walk characters and
+// shapes around the actual knot, not an abstract border shape.
+//
+// `data` is one of the generated knot-path-data modules (KNOT_CENTERLINE_D +
+// EMBLEM_PLACEMENT) — pass theme/knot-path-data.js for the compact alert
+// placement, or theme/scene-knot-path-data.js for the bigger scene placement.
+function buildEmblem(root, svgEl, data, { glow = true, imgSrc = 'https://imndot.github.io/twitch-alerts/assets/celtic-n-knot.png' } = {}) {
+  const { KNOT_CENTERLINE_D, EMBLEM_PLACEMENT } = data;
+  const img = document.createElement('img');
+  img.src = imgSrc;
+  img.alt = '';
+  img.style.position = 'absolute';
+  img.style.left = `${EMBLEM_PLACEMENT.left}px`;
+  img.style.top = `${EMBLEM_PLACEMENT.top}px`;
+  img.style.width = `${EMBLEM_PLACEMENT.width}px`;
+  img.style.height = `${EMBLEM_PLACEMENT.height}px`;
+  if (glow) img.style.filter = 'drop-shadow(0 0 14px rgba(47,217,201,0.35))';
+  root.appendChild(img);
+
+  const centerline = el('path', { d: KNOT_CENTERLINE_D, fill: 'none', stroke: 'none' });
+  svgEl.appendChild(centerline);
+  return centerline;
+}
+
+
+// AUTO-GENERATED by scripts/gen_emblem_path.py -- do not hand-edit, regenerate instead
+// Motion path traces the outer silhouette of assets/celtic-n-knot.png (with a halo margin),
+// placed and scaled to sit on the left side of the 800x360 alert canvas.
+const KNOT_CENTERLINE_D = 'M 315.14 180.00 L 315.07 182.18 L 314.21 184.34 L 313.60 186.48 L 310.05 188.39 L 307.44 190.27 L 304.52 192.04 L 302.13 193.77 L 299.67 195.41 L 297.97 197.10 L 295.58 198.62 L 294.90 200.39 L 293.69 202.04 L 293.35 203.86 L 292.52 205.56 L 291.13 207.10 L 289.37 208.49 L 288.48 210.11 L 287.67 211.73 L 286.45 213.21 L 285.80 214.87 L 285.23 216.56 L 284.63 218.23 L 284.06 219.92 L 283.08 221.44 L 281.98 222.89 L 281.12 224.44 L 279.67 225.69 L 278.00 226.79 L 276.97 228.21 L 275.87 229.58 L 274.74 230.92 L 273.50 232.18 L 272.29 233.44 L 271.02 234.65 L 270.28 236.22 L 268.97 237.37 L 267.54 238.43 L 266.69 239.92 L 266.03 241.57 L 265.47 243.33 L 264.96 245.16 L 263.30 246.00 L 262.22 247.35 L 261.28 248.84 L 259.87 249.87 L 258.36 250.79 L 256.76 251.60 L 255.62 252.88 L 254.64 254.36 L 253.59 255.78 L 252.43 257.10 L 251.29 258.45 L 250.05 259.69 L 249.15 261.42 L 247.69 262.39 L 246.63 263.95 L 245.68 265.74 L 244.84 267.77 L 243.89 269.69 L 242.63 271.16 L 241.01 272.02 L 239.50 273.09 L 237.84 273.89 L 236.04 274.40 L 234.24 274.88 L 232.56 275.59 L 230.55 275.53 L 228.53 275.37 L 226.64 275.45 L 224.83 275.69 L 223.04 275.96 L 221.20 276.04 L 219.32 275.91 L 217.98 277.56 L 216.71 279.69 L 215.36 281.69 L 213.82 283.18 L 212.29 284.86 L 210.60 285.97 L 209.11 288.39 L 207.41 289.89 L 205.70 291.71 L 203.88 293.04 L 202.20 296.05 L 200.32 297.95 L 198.43 300.51 L 196.47 303.55 L 194.41 306.27 L 192.21 306.90 L 190.00 307.77 L 187.77 307.98 L 185.55 307.41 L 183.36 306.68 L 181.37 303.36 L 179.42 300.91 L 177.56 298.38 L 175.73 296.22 L 174.10 293.12 L 172.30 291.75 L 170.64 289.80 L 169.06 287.70 L 167.62 285.31 L 165.95 284.18 L 164.47 282.41 L 162.98 280.85 L 161.77 278.44 L 160.48 276.57 L 158.58 276.69 L 156.75 276.56 L 154.96 276.29 L 153.36 275.45 L 151.55 275.16 L 149.54 275.32 L 147.74 274.91 L 146.21 273.90 L 144.46 273.38 L 142.70 272.82 L 141.01 272.14 L 139.47 271.17 L 137.85 270.32 L 136.29 269.40 L 135.16 267.77 L 134.26 265.84 L 133.31 264.05 L 131.98 262.86 L 130.44 261.97 L 129.44 260.37 L 127.76 259.66 L 126.49 258.43 L 125.31 257.09 L 124.20 255.69 L 122.43 255.04 L 121.25 253.73 L 119.77 252.72 L 118.92 251.08 L 118.18 249.35 L 117.19 247.89 L 115.64 246.96 L 115.30 244.94 L 114.83 243.07 L 114.10 241.46 L 112.14 240.83 L 109.58 240.60 L 107.29 240.09 L 105.74 239.00 L 103.77 238.16 L 101.96 237.18 L 100.34 236.02 L 99.97 234.10 L 99.38 232.32 L 98.88 230.51 L 98.12 228.86 L 97.38 227.19 L 96.72 225.49 L 96.05 223.81 L 95.40 222.12 L 95.10 220.28 L 94.73 218.49 L 94.61 216.62 L 93.71 215.04 L 92.69 213.51 L 91.46 212.02 L 90.26 210.49 L 89.14 208.92 L 87.99 207.33 L 86.53 205.80 L 85.65 204.09 L 84.19 202.49 L 83.19 200.76 L 82.00 199.04 L 79.77 197.46 L 78.12 195.72 L 76.45 193.94 L 73.95 192.20 L 72.39 190.29 L 69.72 188.41 L 66.74 186.46 L 65.85 184.34 L 64.42 182.19 L 64.51 180.00 L 65.39 177.82 L 66.87 175.70 L 69.42 173.68 L 72.23 171.76 L 74.61 169.90 L 77.25 168.15 L 78.55 166.32 L 80.84 164.66 L 82.31 162.94 L 83.64 161.25 L 84.99 159.59 L 85.81 157.85 L 86.71 156.15 L 87.97 154.56 L 88.71 152.86 L 89.53 151.19 L 90.26 149.51 L 91.30 147.93 L 92.15 146.31 L 92.69 144.58 L 93.06 142.79 L 93.35 140.95 L 93.68 139.12 L 94.72 137.58 L 95.74 136.04 L 96.52 134.41 L 97.48 132.86 L 98.52 131.36 L 100.53 130.41 L 102.65 129.57 L 104.23 128.46 L 105.53 127.22 L 107.66 126.53 L 109.27 125.55 L 111.49 125.03 L 112.88 123.97 L 114.28 122.94 L 114.97 121.38 L 115.74 119.87 L 115.93 117.85 L 117.28 116.79 L 118.06 115.22 L 118.45 113.28 L 119.13 111.56 L 120.33 110.33 L 121.84 109.42 L 123.51 108.70 L 124.46 107.21 L 125.03 105.26 L 126.45 104.26 L 127.57 102.90 L 128.75 101.60 L 129.68 99.95 L 130.65 98.31 L 131.69 96.72 L 133.09 95.62 L 134.13 93.97 L 135.25 92.38 L 136.49 90.95 L 138.23 90.32 L 139.69 89.23 L 141.28 88.37 L 143.25 88.25 L 145.16 88.06 L 146.82 87.39 L 148.23 86.19 L 149.94 85.63 L 151.89 85.69 L 153.65 85.30 L 155.15 84.25 L 156.66 83.17 L 158.34 82.55 L 160.13 82.29 L 161.55 80.79 L 162.98 79.15 L 164.45 77.53 L 165.90 75.60 L 167.46 73.96 L 169.09 72.41 L 170.69 70.48 L 172.39 68.81 L 174.05 66.54 L 175.75 63.95 L 177.67 62.70 L 179.59 60.97 L 181.51 58.58 L 183.52 56.40 L 185.64 55.22 L 187.82 55.10 L 190.00 56.00 L 192.17 55.56 L 194.31 56.53 L 196.38 58.28 L 198.34 60.80 L 200.26 62.73 L 202.19 64.01 L 204.10 65.20 L 205.83 67.39 L 207.56 69.15 L 209.21 71.05 L 210.84 72.80 L 212.47 74.30 L 213.94 76.32 L 215.37 78.25 L 216.73 80.25 L 218.18 81.72 L 219.64 83.05 L 221.40 83.37 L 223.14 83.77 L 224.65 84.79 L 226.17 85.78 L 228.11 85.69 L 229.79 86.26 L 231.61 86.55 L 233.26 87.24 L 234.94 87.85 L 236.88 87.99 L 238.77 88.27 L 240.31 89.23 L 242.03 89.88 L 243.57 90.85 L 244.66 92.52 L 245.78 94.11 L 246.82 95.76 L 247.79 97.47 L 248.75 99.14 L 249.77 100.68 L 250.90 102.05 L 252.15 103.26 L 253.37 104.48 L 254.37 105.95 L 255.35 107.42 L 256.26 108.95 L 258.08 109.50 L 259.67 110.33 L 260.87 111.56 L 262.01 112.85 L 263.34 113.96 L 264.61 115.14 L 265.56 116.60 L 265.50 118.86 L 265.52 121.00 L 265.95 122.77 L 266.43 124.47 L 267.43 125.78 L 269.41 126.44 L 271.77 126.90 L 274.08 127.46 L 276.21 128.20 L 278.14 129.11 L 279.92 130.16 L 281.28 131.47 L 281.60 133.33 L 281.99 135.13 L 282.29 136.96 L 282.82 138.67 L 283.48 140.32 L 284.26 141.92 L 285.02 143.53 L 285.80 145.13 L 286.18 146.88 L 287.18 148.43 L 288.10 150.01 L 288.93 151.63 L 289.64 153.30 L 290.20 155.02 L 291.29 156.62 L 292.68 158.17 L 293.44 159.89 L 294.56 161.56 L 295.77 163.25 L 298.09 164.81 L 300.55 166.43 L 302.98 168.13 L 305.62 169.88 L 308.06 171.74 L 311.15 173.65 L 313.70 175.68 L 314.50 177.83 Z';
+// Straight-edged diamond (4 tip points) for the character to run on -- easier to track
+// visually than the bumpy knotwork silhouette; the squares still use KNOT_CENTERLINE_D.
+const CHAR_PATH_D = 'M 336.65 180.00 L 187.38 329.98 L 42.83 182.57 L 187.45 33.64 Z';
+const EMBLEM_PLACEMENT = { left: 56.36, top: 53.21, width: 266.90, height: 266.90 };
+const EMBLEM_CENTER = { x: 190.00, y: 180.00 };
+
+
+// This is the Follow alert mirrored: everyone runs the knot the other way,
+  // and the character now trails/chases the squares instead of leading them.
+  // Flipping which way `loopFrac` advances over time is enough to swap who's
+  // "ahead" vs "behind" without touching the lead/lag offsets themselves —
+  // see the comment on DIRECTION below for why.
+  const DIRECTION = -1;
+
+  const params = new URLSearchParams(location.search);
+
+  const stage = document.getElementById('stage');
+  const root = document.getElementById('root');
+  const centerline = buildEmblem(root, stage, { KNOT_CENTERLINE_D, EMBLEM_PLACEMENT });
+  const sampler = makePathSampler(centerline); // bumpy knot silhouette — squares still ride this
+
+  const charPathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  charPathEl.setAttribute('d', CHAR_PATH_D);
+  charPathEl.setAttribute('fill', 'none');
+  charPathEl.setAttribute('stroke', 'none');
+  stage.appendChild(charPathEl);
+  const charSampler = makePathSampler(charPathEl);
+
+  // --- Character (now chasing) — true run-cycle sprite frames ---
+  const RUN_FRAMES = Array.from({ length: 6 }, (_, i) => `https://imndot.github.io/twitch-alerts/assets/run/run-${i}.png`);
+  RUN_FRAMES.forEach(src => { const p = new Image(); p.src = src; }); // preload
+
+  const charEl = document.createElement('img');
+  charEl.src = RUN_FRAMES[0];
+  charEl.className = 'mover char-img';
+  root.appendChild(charEl);
+  let lastFrameIdx = -1;
+  const FRAME_MS = 140; // run-cycle frame rate, kept in step with LOOP_DURATION below
+  const charJitter = makeJitter(1);
+
+  // Running the knot in reverse means his actual direction of travel is
+  // opposite the path's local tangent ("angle"). Keep the SAME rotation
+  // formula as Follow (so he reads right-side-up on top / upside-down on
+  // bottom exactly like Follow does — rotation alone controls that, and
+  // adding a +180 here would flip it, which is the bug we're fixing).
+  // Instead, drop Follow's scaleX(-1) mirror entirely — mirroring only
+  // affects left/right facing, never up/down, and is exactly what's needed
+  // to make his stride match the reversed travel direction.
+  function placeCharacter(frac, elapsedMs) {
+    const { x, y, angle } = charSampler(frac);
+    const { nx, ny } = charJitter(elapsedMs);
+    const w = 52, h = 80;
+    const cx = x - w / 2 + nx * 2;
+    const cy = y - h / 2 + ny * 2;
+    charEl.style.transform = `translate(${cx}px, ${cy}px) rotate(${angle + nx * 2}deg)`;
+
+    const frameIdx = Math.floor(elapsedMs / FRAME_MS) % RUN_FRAMES.length;
+    if (frameIdx !== lastFrameIdx) {
+      lastFrameIdx = frameIdx;
+      charEl.src = RUN_FRAMES[frameIdx];
+    }
+  }
+
+  // --- Neon squares (now lead, with the character chasing them) ---
+  const SQUARE_COLORS = ['var(--neon-cyan)', 'var(--neon-magenta)', 'var(--neon-green)', 'var(--neon-cyan)'];
+  const squares = SQUARE_COLORS.map((color, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'mover';
+    const vis = document.createElement('div');
+    vis.className = 'square-visual';
+    vis.style.background = color;
+    vis.style.boxShadow = `0 0 6px ${color}, 0 0 14px ${color}`;
+    vis.style.animationDelay = `${i * -0.2}s`;
+    wrap.appendChild(vis);
+    root.appendChild(wrap);
+    return {
+      el: wrap,
+      phase: 0.06 + i * 0.045,
+      jitter: makeJitter(10 + i * 3),
+      jumping: false,
+      jumpStart: 0,
+      jumpDur: 0,
+      nextJumpAt: 300 + Math.random() * 700,
+    };
+  });
+
+  const JUMP_HEIGHT = 13; // px, outward from the knot center at the peak of a hop
+  const JUMP_MIN_MS = 160, JUMP_MAX_MS = 260;
+  const JUMP_GAP_MIN_MS = 350, JUMP_GAP_MAX_MS = 900;
+
+  function updateJump(sq, elapsedMs) {
+    if (!sq.jumping) {
+      if (elapsedMs >= sq.nextJumpAt) {
+        sq.jumping = true;
+        sq.jumpStart = elapsedMs;
+        sq.jumpDur = JUMP_MIN_MS + Math.random() * (JUMP_MAX_MS - JUMP_MIN_MS);
+      }
+      return 0;
+    }
+    const progress = (elapsedMs - sq.jumpStart) / sq.jumpDur;
+    if (progress >= 1) {
+      sq.jumping = false;
+      sq.nextJumpAt = elapsedMs + JUMP_GAP_MIN_MS + Math.random() * (JUMP_GAP_MAX_MS - JUMP_GAP_MIN_MS);
+      return 0;
+    }
+    return JUMP_HEIGHT * Math.sin(Math.PI * progress);
+  }
+
+  const CHAR_PHASE_LEAD = 0.09; // same offset as Follow — reversing DIRECTION is what flips who's ahead
+  const LOOP_DURATION = 3000;   // ms per full lap around the knot
+
+  function render(frac, elapsedMs) {
+    placeCharacter((frac + CHAR_PHASE_LEAD + 1) % 1, elapsedMs);
+    squares.forEach(sq => {
+      const { x, y, angle } = sampler((frac - sq.phase + 1) % 1);
+      const { nx, ny } = sq.jitter(elapsedMs);
+      const jump = updateJump(sq, elapsedMs);
+      let ox = x, oy = y;
+      if (jump > 0) {
+        const dx = x - EMBLEM_CENTER.x, dy = y - EMBLEM_CENTER.y;
+        const d = Math.hypot(dx, dy) || 1;
+        ox += (dx / d) * jump;
+        oy += (dy / d) * jump;
+      }
+      const w = 10, h = 10;
+      const cx = ox - w / 2 + nx * 3;
+      const cy = oy - h / 2 + ny * 3;
+      sq.el.style.transform = `translate(${cx}px, ${cy}px) rotate(${angle}deg) scale(${1 + jump * 0.025})`;
+    });
+  }
+
+  // --- Resettable trigger: see Follow's alert for why this needs to be able
+  //     to play, fully reset, and play again, not just once on page load. ---
+  let cancelTimeline = null;
+
+  function resetVisualState() {
+    root.classList.remove('fading');
+    const textBlock = document.getElementById('textBlock');
+    textBlock.classList.remove('show');
+    void textBlock.offsetWidth; // force a reflow so re-adding 'show' restarts the pop-in animation
+    textBlock.classList.add('show');
+    lastFrameIdx = -1;
+    squares.forEach(sq => {
+      sq.jumping = false;
+      sq.jumpStart = 0;
+      sq.jumpDur = 0;
+      sq.nextJumpAt = 300 + Math.random() * 700;
+    });
+  }
+
+  function playAlert(username) {
+    if (cancelTimeline) cancelTimeline();
+    resetVisualState();
+    document.getElementById('username').textContent = username || 'Viewer';
+
+    const sfx = document.getElementById('sfx');
+    sfx.volume = 0.85;
+    sfx.currentTime = 0;
+    sfx.play().catch(() => {}); // autoplay can be blocked outside OBS; fails silently there
+
+    const TOTAL = 6000;
+    cancelTimeline = runTimeline(TOTAL, (t, elapsed) => {
+      const rawFrac = (elapsed / LOOP_DURATION) % 1;
+      const loopFrac = ((DIRECTION * rawFrac) % 1 + 1) % 1;
+      render(loopFrac, elapsed);
+      if (t > 0.88 && !root.classList.contains('fading')) {
+        root.classList.add('fading');
+      }
+    });
+  }
+
+  const debugFrac = params.get('frac');
+  if (params.get('debug') === '1' && debugFrac !== null) {
+    document.getElementById('textBlock').style.animation = 'none';
+    document.getElementById('textBlock').style.opacity = '1';
+    const targetMs = parseFloat(params.get('ms') || '0');
+    for (let t = 0; t <= targetMs; t += 16) render(parseFloat(debugFrac), t);
+    render(parseFloat(debugFrac), targetMs);
+  } else {
+    // Live on StreamElements: sit idle and wait for a real (non-gifted) sub event.
+    window.addEventListener('onEventReceived', (obj) => {
+      const data = obj.detail.event;
+      if (obj.detail.listener === 'subscriber-latest' && !data.gifted) {
+        playAlert(data.name);
+      }
+    });
+
+    const urlUser = params.get('user');
+    if (urlUser) playAlert(urlUser);
+
+    if (params.get('simtest') === '1') {
+      playAlert('FirstTester');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('onEventReceived', {
+          detail: { listener: 'subscriber-latest', event: { name: 'SecondTester', gifted: false } },
+        }));
+      }, 6500);
+    }
+  }
+
+</script>
+</body></html>

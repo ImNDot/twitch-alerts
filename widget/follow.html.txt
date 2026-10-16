@@ -1,0 +1,10 @@
+<div class="alert-root" id="root">
+  <svg id="stage" width="800" height="360" viewBox="0 0 800 360" style="position:absolute;inset:0;"></svg>
+
+  <div class="text-block show" id="textBlock">
+    <div class="alert-username" id="username">Viewer</div>
+    <div class="alert-caption">just followed!</div>
+  </div>
+
+  <audio id="sfx" src="https://imndot.github.io/twitch-alerts/assets/audio/follow.mp3" preload="auto"></audio>
+</div>

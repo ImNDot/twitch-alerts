@@ -1,0 +1,12 @@
+<div class="alert-root" id="root">
+  <div class="text-block show" id="textBlock">
+    <div class="alert-username" id="username">Viewer</div>
+    <div class="alert-caption" id="caption">GIFTED A SUB!</div>
+  </div>
+
+  <div class="head-wrap show" id="headWrap">
+    <img class="head-img" id="headImg" src="https://imndot.github.io/twitch-alerts/assets/character-head-closed.png">
+  </div>
+
+  <audio id="sfx" src="https://imndot.github.io/twitch-alerts/assets/audio/gift.mp3" preload="auto"></audio>
+</div>
