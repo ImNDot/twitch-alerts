@@ -35,15 +35,15 @@ html, body {
   padding: 0;
   background: transparent;
   overflow: hidden;
-  width: var(--box-w);
-  height: var(--box-h);
-  font-family: var(--font-body);
+  width: 800px;
+  height: 360px;
+  font-family: 'Space Grotesk', sans-serif;
 }
 
 .alert-root {
   position: relative;
-  width: var(--box-w);
-  height: var(--box-h);
+  width: 800px;
+  height: 360px;
 }
 
 .alert-panel {
@@ -51,28 +51,28 @@ html, body {
   inset: 34px;
   border-radius: 26px;
   background:
-    radial-gradient(120% 140% at 20% 0%, #fffaf0 0%, var(--panel-cream) 45%, var(--panel-cream-lo) 100%);
+    radial-gradient(120% 140% at 20% 0%, #fffaf0 0%, #ece5d3 45%, #d9d0b8 100%);
   box-shadow: 0 0 40px rgba(47, 217, 201, 0.15) inset, 0 10px 30px rgba(0,0,0,0.45);
 }
 
 .alert-username {
-  font-family: var(--font-display);
+  font-family: 'Rajdhani', sans-serif;
   font-weight: 700;
-  color: var(--ink);
+  color: #241f1a;
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
 
 .alert-caption {
-  font-family: var(--font-display);
+  font-family: 'Rajdhani', sans-serif;
   font-weight: 600;
-  color: var(--orange);
+  color: #ff8a3d;
   text-transform: uppercase;
   letter-spacing: 0.12em;
 }
 
-.glow-teal   { filter: drop-shadow(0 0 6px var(--teal)) drop-shadow(0 0 14px var(--teal)); }
-.glow-orange { filter: drop-shadow(0 0 6px var(--orange)) drop-shadow(0 0 14px var(--orange)); }
+.glow-teal   { filter: drop-shadow(0 0 6px #2fd9c9) drop-shadow(0 0 14px #2fd9c9); }
+.glow-orange { filter: drop-shadow(0 0 6px #ff8a3d) drop-shadow(0 0 14px #ff8a3d); }
 
 @keyframes popIn {
   0%   { opacity: 0; transform: scale(0.6) translateY(10px); }
@@ -99,7 +99,7 @@ html, body {
   }
   .text-block.show { animation: popIn 480ms cubic-bezier(.2,1.4,.4,1) forwards; }
   .text-block.hide { animation: fadeOut 350ms ease forwards; }
-  .alert-username { font-size: 44px; line-height: 1; color: var(--panel-cream); text-shadow: 0 0 18px rgba(236,229,211,0.45); }
+  .alert-username { font-size: 44px; line-height: 1; color: #ece5d3; text-shadow: 0 0 18px rgba(236,229,211,0.45); }
   .alert-caption { font-size: 19px; margin-top: 8px; color: #ff4d4d; animation: textGlowPulse 1.6s ease-in-out infinite; }
 
   .mover {
@@ -322,7 +322,7 @@ const params = new URLSearchParams(location.search);
   // --- Neon squares, pulled in tight around the character this time ---
   // (almost overlapping him — one even sits slightly ahead of his own lead,
   // instead of trailing the whole pack the way Follow does).
-  const SQUARE_COLORS = ['var(--neon-cyan)', 'var(--neon-magenta)', 'var(--neon-green)', 'var(--neon-cyan)'];
+  const SQUARE_COLORS = ['#39e6ff', '#ff2bd6', '#7cff9c', '#39e6ff'];
   const SQUARE_OFFSETS = [0.115, 0.085, 0.065, 0.045]; // position = frac + offset (character sits at frac+0.09)
   const squares = SQUARE_COLORS.map((color, i) => {
     const wrap = document.createElement('div');

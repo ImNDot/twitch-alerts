@@ -171,7 +171,7 @@ const params = new URLSearchParams(location.search);
   // --- Neon squares, pulled in tight around the character this time ---
   // (almost overlapping him — one even sits slightly ahead of his own lead,
   // instead of trailing the whole pack the way Follow does).
-  const SQUARE_COLORS = ['var(--neon-cyan)', 'var(--neon-magenta)', 'var(--neon-green)', 'var(--neon-cyan)'];
+  const SQUARE_COLORS = ['#39e6ff', '#ff2bd6', '#7cff9c', '#39e6ff'];
   const SQUARE_OFFSETS = [0.115, 0.085, 0.065, 0.045]; // position = frac + offset (character sits at frac+0.09)
   const squares = SQUARE_COLORS.map((color, i) => {
     const wrap = document.createElement('div');

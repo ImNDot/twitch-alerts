@@ -32,7 +32,29 @@ def rewrite_paths(src: str) -> str:
     src = re.sub(r"\.\./(assets|theme)/", f"{BASE_URL}/\\1/", src)
     return src
 
+# StreamElements' custom-widget preview showed content clipped to a tiny
+# fraction of a correctly-800x360-sized widget box -- exactly what happens
+# if `:root { --box-w: ... }` never actually applies (if their widget host
+# doesn't treat your CSS as a normal document's stylesheet, `:root` may not
+# match anything at all, silently breaking every var(--x) at once: sizing,
+# colors, all of it). Rather than depend on that working, every var(--name)
+# gets resolved to its literal value at build time, in both CSS and JS
+# (several alerts pass 'var(--neon-cyan)' etc. straight into inline styles
+# from JS), so nothing here depends on :root being honored.
 TOKENS_CSS = (ROOT / "theme/tokens.css").read_text()
+
+def parse_root_vars(css: str) -> dict:
+    m = re.search(r":root\s*\{(.*?)\}", css, re.DOTALL)
+    pairs = re.findall(r"--([\w-]+)\s*:\s*([^;]+);", m.group(1))
+    return {name: value.strip() for name, value in pairs}
+
+ROOT_VARS = parse_root_vars(TOKENS_CSS)
+
+def resolve_vars(src: str) -> str:
+    def sub(m):
+        name = m.group(1)
+        return ROOT_VARS.get(name, m.group(0))  # leave unknown vars alone
+    return re.sub(r"var\(--([\w-]+)\)", sub, src)
 PATH_MOTION = strip_exports((ROOT / "theme/path-motion.js").read_text())
 KNOT_BORDER = strip_exports(rewrite_paths((ROOT / "theme/knot-border.js").read_text()))
 KNOT_PATH_DATA = strip_exports((ROOT / "theme/knot-path-data.js").read_text())
@@ -77,9 +99,9 @@ def build(name: str, needs_knot: bool):
     js_parts.append(script.strip())
     js = "\n\n".join(js_parts)
 
-    (OUT_DIR / f"{name}.css.txt").write_text(css + "\n")
+    (OUT_DIR / f"{name}.css.txt").write_text(resolve_vars(css) + "\n")
     (OUT_DIR / f"{name}.html.txt").write_text(body_html + "\n")
-    (OUT_DIR / f"{name}.js.txt").write_text(js + "\n")
+    (OUT_DIR / f"{name}.js.txt").write_text(resolve_vars(js) + "\n")
     print(f"built widget/{name}.{{css,html,js}}.txt")
 
 for name, cfg in ALERTS.items():
